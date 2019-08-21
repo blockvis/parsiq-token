@@ -1,0 +1,37 @@
+{
+  "name": "ParsiqToken",
+  "version": "1.0.0",
+  "description": "Parsiq smart-contracts",
+  "main": "truffle-config.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "compile": "truffle compile",
+    "test": "npm-run-all -p -r start:ganache test:sol",
+    "start:ganache": "node scripts/run.js",
+    "test:sol": "truffle test",
+    "migrate": "truffle migrate --network=development",
+    "deploy": "truffle migrate --network=ropsten",
+    "solhint": "solhint contracts/**/*.sol"
+  },
+  "author": "Blockvis",
+  "license": "ISC",
+  "dependencies": {
+    "ganache-cli": "^6.6.0",
+    "left-pad": "^1.3.0",
+    "npm-run-all": "^4.1.5",
+    "openzeppelin-solidity": "^2.3.0",
+    "truffle-privatekey-provider": "^0.1.0"
+  },
+  "devDependencies": {
+    "chai": "^4.2.0",
+    "chai-as-promised": "^7.1.1",
+    "chai-bn": "^0.1.1",
+    "ganache-core": "^2.7.0",
+    "scrypt": "^6.0.3",
+    "solhint": "^2.2.0",
+    "truffle": "^5.0.32",
+    "truffle-hdwallet-provider": "^1.0.16"
+  }
+}
