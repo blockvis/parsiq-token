@@ -10,6 +10,7 @@ require('chai')
 const OneToken = new BN(web3.utils.toWei('1', 'ether'));
 
 const ParsiqToken = artifacts.require('ParsiqToken');
+const Burner = artifacts.require('Burner');
 const RandomContract = artifacts.require('RandomContract');
 const TestERC20Token = artifacts.require('TestERC20Token');
 
@@ -18,9 +19,12 @@ contract('Parsiq Token', async accounts => {
   const user1 = accounts[1];
   const user2 = accounts[2];
   let token;
+  let burner;
 
   beforeEach(async () => {
-    token = await ParsiqToken.new();
+    burner = await Burner.new();
+    token = await ParsiqToken.new(burner.address);
+    await burner.initialize(token.address);
   });
 
   describe('Sending', () => {
@@ -66,6 +70,7 @@ contract('Parsiq Token', async accounts => {
         now = await getTime();        
         await nextBlock();
         await token.unlockTransfers(now + 1);
+        await increaseTime(1);
       });
 
       it('should success ERC20 transfer', async () => {
@@ -84,6 +89,15 @@ contract('Parsiq Token', async accounts => {
         await token.transfer(user1, OneToken);
 
         await token.transfer(user2, OneToken, { from: user1 });
+
+        (await token.balanceOf(user2)).should.be.bignumber.equal(OneToken);
+      });
+
+      it('should allow tranferFrom between users', async () => {
+        await token.transfer(user1, OneToken);
+        await token.approve(user2, OneToken, { from: user1 });
+
+        await token.transferFrom(user1, user2, OneToken, { from: user2 });
 
         (await token.balanceOf(user2)).should.be.bignumber.equal(OneToken);
       });
@@ -117,11 +131,11 @@ contract('Parsiq Token', async accounts => {
 
     it('should successfully burn', async () => {
       const totalSupply = await token.totalSupply();
-      await token.setBurnAddress(user1);
+      await token.enableBurning();
 
-      await token.transfer(user1, OneToken);
+      await token.transfer(burner.address, OneToken);
 
-      (await token.balanceOf(user1)).should.be.bignumber.equal('0');
+      (await token.balanceOf(burner.address)).should.be.bignumber.equal('0');
       (await token.totalSupply()).should.be.bignumber.equal(totalSupply.sub(OneToken));
     });
   });
@@ -160,8 +174,11 @@ contract('Parsiq Token', async accounts => {
 
   describe('Signature', () => {
     let contract;
+    let burner;
     beforeEach(async () => {
-      token = await ParsiqToken.new();
+      burner = await Burner.new();
+      token = await ParsiqToken.new(burner.address);
+      await burner.initialize(token.address);
       contract = await RandomContract.new();
     });
 

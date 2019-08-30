@@ -13,8 +13,8 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
     using ECDSA for bytes32;
     using Address for address;
 
-    uint256 public constant MAX_UINT256 = ~uint256(0);
-    uint256 public constant TOTAL_TOKENS = 1000000e18; // 1 000 000 tokens
+    uint256 internal constant MAX_UINT256 = ~uint256(0);
+    uint256 internal constant TOTAL_TOKENS = 1000000e18; // 1 000 000 tokens
     string public constant name = "Parsiq Token";
     string public constant symbol = "PRQ";
     uint8 public constant decimals = uint8(18);
@@ -25,7 +25,8 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
     mapping(bytes32 => bool) public hashedTxs;
     mapping(address => bool) public whitelisted;
     uint256 public transfersUnlockTime = MAX_UINT256; // MAX_UINT256 - transfers locked
-    address public burnAddress;
+    address public burnerAddress;
+    bool public burningEnabled = false;
     bool public etherlessTransferEnabled = true;
 
     struct Timelock {
@@ -50,8 +51,8 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
         _;
     }
     
-    modifier onlyBurnAddress() {
-        require(msg.sender == burnAddress, "Only burnAddress can burn tokens");
+    modifier onlyBurner() {
+        require(msg.sender == burnerAddress, "Only burnAddress can burn tokens");
         _;
     }
 
@@ -73,9 +74,15 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
         _;
     }
 
-    constructor() public TokenRecoverable() {
+    modifier notBurnerUntilBurnIsEnabled(address _address) {
+        require(burningEnabled == true || _address != burnerAddress, "Cannot transfer to burner address, until burning is not enabled");
+        _;
+    }
+
+    constructor(address _burnerAddress) public TokenRecoverable() {
         _mint(msg.sender, TOTAL_TOKENS);
         _addWhitelisted(msg.sender);
+        burnerAddress = _burnerAddress;
     }
 
     function () external payable {
@@ -133,6 +140,7 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
     function transfer(address to, uint256 value) public
         onlyWhenTransfersUnlocked(msg.sender, to)
         notTokenAddress(to)
+        notBurnerUntilBurnIsEnabled(to)
         returns (bool)
     {
         bool success = super.transfer(to, value);
@@ -145,6 +153,7 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
     function transferFrom(address from, address to, uint256 value) public
         onlyWhenTransfersUnlocked(from, to)
         notTokenAddress(to)
+        notBurnerUntilBurnIsEnabled(to)
         returns (bool)
     {
         bool success = super.transferFrom(from, to, value);
@@ -165,12 +174,15 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
     }
 
     function transferLocked(address to, uint256 value, uint256 until) public
-        onlyWhitelisted returns (bool)
+        onlyWhitelisted
+        notTokenAddress(to)
+        returns (bool)
     {
         require(to != address(this), "Cannot lock on contract address");
         require(to != address(0), "ERC20: transfer to the zero address");
         require(value > 0, "Value must be positive");
         require(until > now, "Until must be future value");
+        require(timelocks[to].length.add(relativeTimelocks[to].length) <= 100, "Too many locks on address");
 
         _transfer(msg.sender, address(this), value);
 
@@ -191,6 +203,7 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
         require(to != address(this), "Cannot lock on contract address");
         require(to != address(0), "ERC20: transfer to the zero address");
         require(value > 0, "Value must be positive");
+        require(timelocks[to].length.add(relativeTimelocks[to].length) <= 100, "Too many locks on address");
 
         _transfer(msg.sender, address(this), value);
 
@@ -224,14 +237,12 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
      * @dev Burns a specific amount of tokens.
      * @param value The amount of token to be burned.
      */
-    function burn(uint256 value) public onlyBurnAddress {
+    function burn(uint256 value) public onlyBurner {
         _burn(msg.sender, value);
     }
 
-    function setBurnAddress(address _burnAddress) public onlyOwner {
-        require(balanceOf(_burnAddress) == 0, "Burn address must have zero balance!");
-
-        burnAddress = _burnAddress;
+    function enableBurning() public onlyOwner {
+        burningEnabled = true;
     }
 
     /** Etherless Transfer (ERC865 based) */
@@ -253,6 +264,7 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
         public
         onlyWhenEtherlessTransferEnabled
         notTokenAddress(_to)
+        notBurnerUntilBurnIsEnabled(_to)
         returns (bool)
     {
         require(_to != address(0), "Transfer to the zero address");
@@ -353,14 +365,15 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
         super.recoverTokens(token, to,  amount);
     }
 
-    function _release(address beneficiary) internal returns (uint256) {
+    function _release(address beneficiary) internal 
+        notBurnerUntilBurnIsEnabled(beneficiary) 
+        returns (uint256) {
         uint256 tokens = _releaseLocks(timelocks[beneficiary], 0);
         if (transfersUnlockTime <= now) {
             tokens = tokens.add(_releaseLocks(relativeTimelocks[beneficiary], transfersUnlockTime));
         }
 
         if (tokens == 0) return 0;
-
         _transfer(address(this), beneficiary, tokens);
         _postTransfer(address(this), beneficiary, tokens);
         emit Released(beneficiary, tokens);
@@ -413,8 +426,8 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
 
             ITokenReceiver(to).tokensReceived(from, to, value);
         } else {
-            if (to == burnAddress) {
-                _burn(burnAddress, value);
+            if (to == burnerAddress) {
+                _burn(burnerAddress, value);
             }
         }
     }

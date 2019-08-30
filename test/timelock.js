@@ -10,16 +10,21 @@ const OneToken = new BN(web3.utils.toWei('1', 'ether'));
 const { increaseTime, nextBlock, getTime, signRelease } = require('./utils.js');
 
 const ParsiqToken = artifacts.require("ParsiqToken");
+const Burner = artifacts.require("Burner");
 
 contract('Parsiq Timelock', async accounts => {
   const admin = accounts[0];
   const user1 = accounts[1];
   const user2 = accounts[2];
   const duration = 60; // seconds
+  let token;
+  let burner;
 
   describe('Whitelist', () => {
     beforeEach(async () => {
-      token = await ParsiqToken.new();
+      burner = await Burner.new();
+      token = await ParsiqToken.new(burner.address);
+      await burner.initialize(token.address);
     });
     it('owner can add to whitelist', async () => {
       await token.addWhitelisted(user1);
@@ -104,13 +109,14 @@ contract('Parsiq Timelock', async accounts => {
   });
 
   describe('Single slot', () => {
-    let token;
     let now;
 
     describe('Absolute timelock', () => {
       before(async () => {
         now = await getTime();
-        token = await ParsiqToken.new();
+        burner = await Burner.new();
+        token = await ParsiqToken.new(burner.address);
+        await burner.initialize(token.address);
       });
       it('sucessfully adds slot', async () => {
         const lockedTill = new BN(now + duration);
@@ -141,7 +147,9 @@ contract('Parsiq Timelock', async accounts => {
 
     describe('Relative timelock', () => {
       before(async () => {
-        token = await ParsiqToken.new();
+        burner = await Burner.new();
+        token = await ParsiqToken.new(burner.address);
+        await burner.initialize(token.address);
       });
 
       it('sucessfully adds slot', async () => {
@@ -176,12 +184,13 @@ contract('Parsiq Timelock', async accounts => {
 
   describe('Multiple slots', () => {
     let now;
-    let token;
 
     describe('Absolute timelock', () => {
       before(async () => {
         now = await getTime();
-        token = await ParsiqToken.new();
+        burner = await Burner.new();
+        token = await ParsiqToken.new(burner.address);
+        await burner.initialize(token.address);
       });
 
       it('sucessfully adds multiple slots', async () => {
@@ -241,7 +250,9 @@ contract('Parsiq Timelock', async accounts => {
 
     describe('Relative timelock', () => {
       before(async () => {
-        token = await ParsiqToken.new();
+        burner = await Burner.new();
+        token = await ParsiqToken.new(burner.address);
+        await burner.initialize(token.address);
       });
 
       it('sucessfully adds multiple slots', async () => {
@@ -295,10 +306,11 @@ contract('Parsiq Timelock', async accounts => {
 
   describe('Absolute and relative timelocks', () => {
     let now;
-    let token;
     beforeEach(async () => {
       now = await getTime();
-      token = await ParsiqToken.new();
+      burner = await Burner.new();
+      token = await ParsiqToken.new(burner.address);
+      await burner.initialize(token.address);
     });
 
     it('should allow locks', async () => {
@@ -308,6 +320,7 @@ contract('Parsiq Timelock', async accounts => {
       await token.transferLockedRelative(user1, OneToken, duration);
 
       (await token.lockedBalanceOf(user1)).should.bignumber.equal(OneToken.add(OneToken));
+      (await token.totalBalanceOf(user1)).should.bignumber.equal(OneToken.add(OneToken));
     });
 
     it('should show unlockable balance when transfers are not unlocked', async () => {
@@ -350,10 +363,11 @@ contract('Parsiq Timelock', async accounts => {
 
   describe('Etherless release', () => {
     let now;
-    let token;
     before(async () => {
       now = await getTime();
-      token = await ParsiqToken.new();
+      burner = await Burner.new();
+      token = await ParsiqToken.new(burner.address);
+      await burner.initialize(token.address);
     });
 
     it('sucessfully adds slot', async () => {
@@ -388,10 +402,11 @@ contract('Parsiq Timelock', async accounts => {
   });
 
   describe('Release with Ether transfer', () => {
-    let token;
     let now;
     before(async () => {
-      token = await ParsiqToken.new();
+      burner = await Burner.new();
+      token = await ParsiqToken.new(burner.address);
+      await burner.initialize(token.address);
       now = await getTime();
       await token.unlockTransfers(now + 1);
     });

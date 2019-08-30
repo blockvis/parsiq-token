@@ -10,6 +10,7 @@ const { sign, getTime, increaseTime } = require('./utils.js');
 const OneToken = new BN(web3.utils.toWei('1', 'ether'));
 
 const ParsiqToken = artifacts.require('ParsiqToken');
+const Burner = artifacts.require('Burner');
 const RandomContract = artifacts.require('RandomContract');
 const TestTokenReceiver = artifacts.require("TestTokenReceiver");
 const CanonicalBurner = artifacts.require("CanonicalBurner");
@@ -20,11 +21,12 @@ contract('Parsiq Token', async accounts => {
   const user1 = accounts[1];
   const user2 = accounts[2];
   let token;
-  let now;
+  let burner;
 
   beforeEach(async () => {
-    now = await getTime();
-    token = await ParsiqToken.new();
+    burner = await Burner.new();
+    token = await ParsiqToken.new(burner.address);
+    await burner.initialize(token.address);
   });
 
   describe('Default', () => {
@@ -38,17 +40,7 @@ contract('Parsiq Token', async accounts => {
       (await token.decimals()).should.bignumber.equal('18');
     });
     it('should successfully set burn address', async () => {
-      await token.setBurnAddress(user2);
-
-      (await token.burnAddress()).should.equal(user2);
-    });
-    it('stranger should fail to set burn address', async () => {
-      await token.setBurnAddress(user2, { from : user1 }).should.be.rejected;
-    });
-    it('should fail to set burnAddress when it has non zero balance', async () => {
-      await token.transfer(user2, OneToken);
-
-      await token.setBurnAddress(user2).should.be.rejected;
+      (await token.burnerAddress()).should.equal(burner.address);
     });
   });
 
@@ -94,12 +86,11 @@ contract('Parsiq Token', async accounts => {
     });
 
     it('transfers and burns when transfering to burner contract', async () => {
-      const receiver = await CanonicalBurner.new(token.address);
-      await token.setBurnAddress(receiver.address);
+      await token.enableBurning();
 
-      await token.transfer(receiver.address, OneToken);
+      await token.transfer(burner.address, OneToken);
 
-      (await token.balanceOf(receiver.address)).should.bignumber.equal('0');
+      (await token.balanceOf(burner.address)).should.bignumber.equal('0');
     });
   });
 
@@ -151,6 +142,26 @@ contract('Parsiq Token', async accounts => {
     it('should success ERC20 transfer', async () => {
       const msg = await token.hashForSign(methodSignature, token.address, user1, OneToken, OneToken, 1);
       const signature = await sign(msg, admin);
+
+      await token.transferPreSigned(signature, user1, OneToken, OneToken, 1);
+
+      (await token.balanceOf(user1)).should.be.bignumber.equal(OneToken);
+    });
+   
+    it('should fail to ERC20 transfer when etherless transfers disabled', async () => {
+      const msg = await token.hashForSign(methodSignature, token.address, user1, OneToken, OneToken, 1);
+      const signature = await sign(msg, admin);
+      await token.disableEtherlessTransfer();
+
+      await token.transferPreSigned(signature, user1, OneToken, OneToken, 1).should.be.rejected;
+    });
+
+    it('should success ERC20 transfer when etherless transfers enabled', async () => {
+      const msg = await token.hashForSign(methodSignature, token.address, user1, OneToken, OneToken, 1);
+      const signature = await sign(msg, admin);
+      await token.disableEtherlessTransfer();
+      await token.transferPreSigned(signature, user1, OneToken, OneToken, 1).should.be.rejected;
+      await token.enableEtherlessTransfer();
 
       await token.transferPreSigned(signature, user1, OneToken, OneToken, 1);
 
@@ -218,37 +229,37 @@ contract('Parsiq Token', async accounts => {
   });
 
   describe('Burning', () => {
-    let burner;
+    let canonicalBurner;
     let receiver;
     beforeEach(async () => {
-      burner = await CanonicalBurner.new(token.address);
+      canonicalBurner = await CanonicalBurner.new(token.address);
       receiver = await TestTokenReceiver.new(token.address);
     });
 
     it('should allow burning before all tokens are minted', async () => {
       const totalSupply = await token.totalSupply();
-      await token.setBurnAddress(user1);
+      await token.enableBurning();
 
-      await token.transfer(user1, OneToken);
+      await token.transfer(burner.address, OneToken);
 
-      (await token.balanceOf(user1)).should.bignumber.equal(new BN(0));
+      (await token.balanceOf(burner.address)).should.bignumber.equal(new BN(0));
       (await token.totalSupply()).should.bignumber.equal(totalSupply.sub(OneToken));
     });
 
     it('should burn tokens when transfering to burnAddress', async () => {
       await token.transfer(admin, OneToken);
       const balance = await token.balanceOf(admin);
-      await token.setBurnAddress(user1);
+      await token.enableBurning();
 
-      await token.transfer(user1, OneToken);
+      await token.transfer(burner.address, OneToken);
 
-      (await token.balanceOf(user1)).should.bignumber.equal(new BN(0));
+      (await token.balanceOf(burner.address)).should.bignumber.equal(new BN(0));
       (await token.balanceOf(admin)).should.bignumber.equal(new BN(balance).sub(OneToken));
     });
 
     it('should burn tokens using burning contract', async () => {
       const balance = await token.balanceOf(admin);
-      await token.setBurnAddress(burner.address);
+      await token.enableBurning();
 
       await token.transfer(burner.address, OneToken);
 
@@ -258,7 +269,7 @@ contract('Parsiq Token', async accounts => {
 
     it('unregistered burner should have balance', async () => {
       await receiver.unregister();
-      await token.setBurnAddress(receiver.address);
+      await token.enableBurning();
 
       await token.transfer(receiver.address, OneToken);
 
@@ -267,7 +278,7 @@ contract('Parsiq Token', async accounts => {
 
     it('stranger cannot burn tokens', async () => {
       await token.transfer(user2, OneToken);
-      await token.setBurnAddress(user1);
+      await token.enableBurning();
 
       await token.burn(OneToken, { from: user2 }).should.be.rejected;
     });
