@@ -161,6 +161,7 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
         for (uint256 i = 0; i < n; i++) {
             transfer(to[i], value[i]);
         }
+        return true;
     }
 
     function transferLocked(address to, uint256 value, uint256 until) public
@@ -176,6 +177,7 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
         timelocks[to].push(Timelock({ time: until, amount: value }));
 
         emit TransferLocked(msg.sender, to, value, until);
+        return true;
     }
 
     /**
@@ -195,6 +197,7 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
         relativeTimelocks[to].push(Timelock({ time: duration, amount: value }));
 
         emit TransferLockedRelative(msg.sender, to, value, duration);
+        return true;
     }
 
     function release() public {
