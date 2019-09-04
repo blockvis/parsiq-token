@@ -6,7 +6,7 @@ import "openzeppelin-solidity/contracts/utils/Address.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "./TokenRecoverable.sol";
 import "./ITokenReceiver.sol";
-
+import "./Burner.sol";
 
 contract ParsiqToken is TokenRecoverable, ERC20 {
     using SafeMath for uint256;
@@ -26,7 +26,7 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
     mapping(address => bool) public whitelisted;
     uint256 public transfersUnlockTime = MAX_UINT256; // MAX_UINT256 - transfers locked
     address public burnerAddress;
-    bool public burningEnabled = false;
+    bool public burningEnabled;
     bool public etherlessTransferEnabled = true;
 
     struct Timelock {
@@ -79,10 +79,12 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
         _;
     }
 
-    constructor(address _burnerAddress) public TokenRecoverable() {
+    constructor() public TokenRecoverable() {
         _mint(msg.sender, TOTAL_TOKENS);
         _addWhitelisted(msg.sender);
-        burnerAddress = _burnerAddress;
+        burnerAddress = address(new Burner(address(this)));
+        notify[burnerAddress] = true; // Manually register Burner, because it cannot call register() while token constructor is not complete
+        Burner(burnerAddress).transferOwnership(msg.sender);
     }
 
     function () external payable {
@@ -178,7 +180,6 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
         notTokenAddress(to)
         returns (bool)
     {
-        require(to != address(this), "Cannot lock on contract address");
         require(to != address(0), "ERC20: transfer to the zero address");
         require(value > 0, "Value must be positive");
         require(until > now, "Until must be future value");
@@ -197,10 +198,11 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
     with transfer unlocking time
      */
     function transferLockedRelative(address to, uint256 value, uint256 duration) public
-        onlyWhitelisted returns (bool)
+        onlyWhitelisted
+        notTokenAddress(to)
+        returns (bool)
     {
         require(transfersUnlockTime > now, "Relative locks are disabled. Use transferLocked() instead");
-        require(to != address(this), "Cannot lock on contract address");
         require(to != address(0), "ERC20: transfer to the zero address");
         require(value > 0, "Value must be positive");
         require(timelocks[to].length.add(relativeTimelocks[to].length) <= 100, "Too many locks on address");
@@ -365,8 +367,8 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
         super.recoverTokens(token, to,  amount);
     }
 
-    function _release(address beneficiary) internal 
-        notBurnerUntilBurnIsEnabled(beneficiary) 
+    function _release(address beneficiary) internal
+        notBurnerUntilBurnIsEnabled(beneficiary)
         returns (uint256) {
         uint256 tokens = _releaseLocks(timelocks[beneficiary], 0);
         if (transfersUnlockTime <= now) {
@@ -386,7 +388,7 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
         uint256 i = lockCount;
         while (i > 0) {
             i--;
-            Timelock storage timelock = locks[i];
+            Timelock storage timelock = locks[i]; 
             if (relativeTime.add(timelock.time) > now) continue;
             
             tokens = tokens.add(timelock.amount);
@@ -421,15 +423,10 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
     }
 
     function _postTransfer(address from, address to, uint256 value) internal {
-        if (to.isContract()) {
-            if (notify[to] == false) return;
+        if (!to.isContract()) return;
+        if (notify[to] == false) return;
 
-            ITokenReceiver(to).tokensReceived(from, to, value);
-        } else {
-            if (to == burnerAddress) {
-                _burn(burnerAddress, value);
-            }
-        }
+        ITokenReceiver(to).tokensReceived(from, to, value);
     }
 
     function _addWhitelisted(address _address) internal {

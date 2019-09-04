@@ -10,7 +10,6 @@ require('chai')
 const OneToken = new BN(web3.utils.toWei('1', 'ether'));
 
 const ParsiqToken = artifacts.require('ParsiqToken');
-const Burner = artifacts.require('Burner');
 const RandomContract = artifacts.require('RandomContract');
 const TestERC20Token = artifacts.require('TestERC20Token');
 
@@ -22,9 +21,8 @@ contract('Parsiq Token', async accounts => {
   let burner;
 
   beforeEach(async () => {
-    burner = await Burner.new();
-    token = await ParsiqToken.new(burner.address);
-    await burner.initialize(token.address);
+    token = await ParsiqToken.new();
+    burner = await token.burnerAddress();
   });
 
   describe('Sending', () => {
@@ -133,9 +131,9 @@ contract('Parsiq Token', async accounts => {
       const totalSupply = await token.totalSupply();
       await token.enableBurning();
 
-      await token.transfer(burner.address, OneToken);
+      await token.transfer(burner, OneToken);
 
-      (await token.balanceOf(burner.address)).should.be.bignumber.equal('0');
+      (await token.balanceOf(burner)).should.be.bignumber.equal('0');
       (await token.totalSupply()).should.be.bignumber.equal(totalSupply.sub(OneToken));
     });
   });
@@ -174,11 +172,8 @@ contract('Parsiq Token', async accounts => {
 
   describe('Signature', () => {
     let contract;
-    let burner;
     beforeEach(async () => {
-      burner = await Burner.new();
-      token = await ParsiqToken.new(burner.address);
-      await burner.initialize(token.address);
+      token = await ParsiqToken.new();
       contract = await RandomContract.new();
     });
 

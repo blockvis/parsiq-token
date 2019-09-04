@@ -10,9 +10,7 @@ contract Burner is TokenRecoverable, ITokenReceiver {
 
     address public migrator;
 
-    function initialize(address payable _token) public onlyOwner {
-        require(token == address(0), "Already initialized");
-        ParsiqToken(_token).register();
+    constructor(address payable _token) public TokenRecoverable() {
         token = _token;
     }
 
