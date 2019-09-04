@@ -14,7 +14,7 @@ contract ParsiqToken is TokenRecoverable, ERC20 {
     using Address for address;
 
     uint256 internal constant MAX_UINT256 = ~uint256(0);
-    uint256 internal constant TOTAL_TOKENS = 1000000e18; // 1 000 000 tokens
+    uint256 internal constant TOTAL_TOKENS = 500000000e18; // 500 000 000 tokens
     string public constant name = "Parsiq Token";
     string public constant symbol = "PRQ";
     uint8 public constant decimals = uint8(18);
