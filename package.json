@@ -30,7 +30,7 @@
     "chai-bn": "^0.1.1",
     "ganache-core": "^2.7.0",
     "scrypt": "^6.0.3",
-    "solhint": "^2.2.0",
+    "solhint": "^6.0.1",
     "truffle": "^5.0.32",
     "truffle-hdwallet-provider": "^1.0.16"
   }
